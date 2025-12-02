@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>멀티 채팅방</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        #chat-page { margin: 20px; }
+        #messageArea { height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;}
+        .message { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="chat-page">
+    <h2>멀티 채팅방 💬</h2>
+
+    <div>
+        <label>방 번호: </label>
+        <input type="text" id="roomIdInput" value="1" placeholder="방 번호 (예: 1)" />
+    </div>
+    <br/>
+    <div>
+        <label>닉네임: </label>
+        <input type="text" id="senderInput" placeholder="이름을 입력하세요" />
+    </div>
+    <br/>
+    <button onclick="connect()">채팅방 입장</button>
+
+    <div id="chat-box" style="display:none;">
+        <hr/>
+        <h3>Room: <span id="room-id-display"></span></h3>
+        <div id="messageArea"></div>
+        <input type="text" id="messageInput" placeholder="메시지 입력..." />
+        <button onclick="sendMessage()">보내기</button>
+    </div>
+</div>
+
+<script>
+    var stompClient = null;
+    var roomId = null;
+
+    function connect() {
+        var sender = document.getElementById('senderInput').value;
+        var roomInput = document.getElementById('roomIdInput').value;
+
+        if(!sender || !roomInput) {
+            alert("방 번호와 이름을 모두 입력해주세요!");
+            return;
+        }
+
+        roomId = roomInput; // 방 번호 저장
+
+        var socket = new SockJS('/ws');
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, function (frame) {
+            console.log('Connected: ' + frame);
+            document.getElementById('chat-box').style.display = 'block';
+            document.getElementById('room-id-display').innerText = roomId;
+
+            // 동적 구독 ("/topic/room/" + roomId)
+            // 이제 내가 입력한 방 번호의 메시지만 듣습니다.
+            stompClient.subscribe('/topic/room/' + roomId, function (messageOutput) {
+                showMessage(JSON.parse(messageOutput.body));
+            });
+        });
+    }
+
+    function sendMessage() {
+        var sender = document.getElementById('senderInput').value;
+        var messageContent = document.getElementById('messageInput').value;
+
+        if(messageContent && stompClient) {
+            var chatMessage = {
+                roomId: roomId, // 메시지에 방 번호도 같이 실어 보냄 (선택 사항이지만 명시적으로)
+                sender: sender,
+                content: messageContent
+            };
+
+            // 동적 전송 ("/app/chat/" + roomId)
+            // 컨트롤러의 @MessageMapping("/chat/{roomId}")로 날아갑니다.
+            stompClient.send("/app/chat/" + roomId, {}, JSON.stringify(chatMessage));
+            document.getElementById('messageInput').value = '';
+        }
+    }
+
+    function showMessage(message) {
+        var messageArea = document.getElementById('messageArea');
+        var messageElement = document.createElement('div');
+        messageElement.classList.add('message');
+        messageElement.innerHTML = "<strong>" + message.sender + ":</strong> " + message.content;
+        messageArea.appendChild(messageElement);
+        messageArea.scrollTop = messageArea.scrollHeight;
+    }
+</script>
+
+</body>
+</html>
